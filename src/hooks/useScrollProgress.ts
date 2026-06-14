@@ -1,28 +1,57 @@
 import { useEffect, useState } from 'react'
 import { CHAPTERS } from '../data/chapters'
 
+function getSectionTops(): { id: string; top: number }[] {
+  return CHAPTERS.map((chapter) => {
+    const el = document.getElementById(chapter.id)
+    return {
+      id: chapter.id,
+      top: el ? el.getBoundingClientRect().top + window.scrollY : 0,
+    }
+  })
+}
+
 export function useActiveChapter() {
   const [activeIndex, setActiveIndex] = useState(0)
 
   useEffect(() => {
-    const sections = CHAPTERS.map((c) => document.getElementById(c.id)).filter(
-      Boolean
-    ) as HTMLElement[]
+    const updateActive = () => {
+      const sections = getSectionTops()
+      if (sections.length === 0) return
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting && entry.intersectionRatio >= 0.4) {
-            const idx = sections.indexOf(entry.target as HTMLElement)
-            if (idx !== -1) setActiveIndex(idx)
-          }
-        })
-      },
-      { threshold: [0.4, 0.6], rootMargin: '-10% 0px -10% 0px' }
-    )
+      const scrollBottom = window.scrollY + window.innerHeight
+      const docHeight = document.documentElement.scrollHeight
 
-    sections.forEach((s) => observer.observe(s))
-    return () => observer.disconnect()
+      // Snap to last chapter when scrolled to the bottom
+      if (scrollBottom >= docHeight - 2) {
+        setActiveIndex(sections.length - 1)
+        return
+      }
+
+      // Reference point ~35% down the viewport — feels natural while reading
+      const reference = window.scrollY + window.innerHeight * 0.35
+
+      let idx = 0
+      for (let i = 0; i < sections.length; i++) {
+        if (reference >= sections[i].top) {
+          idx = i
+        }
+      }
+
+      setActiveIndex(idx)
+    }
+
+    // Wait one frame so layout (fonts, images) has settled before measuring
+    const raf = requestAnimationFrame(updateActive)
+
+    window.addEventListener('scroll', updateActive, { passive: true })
+    window.addEventListener('resize', updateActive, { passive: true })
+
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('scroll', updateActive)
+      window.removeEventListener('resize', updateActive)
+    }
   }, [])
 
   return activeIndex
